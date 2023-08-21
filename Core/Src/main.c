@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "arm_math.h"
+#include "tables.h"
 #include "ssd1306.h"
 /* USER CODE END Includes */
 
@@ -34,6 +35,7 @@
 /* USER CODE BEGIN PD */
 #define BAR_FALL_SPEED 512
 #define DOT_FALL_SPEED 128
+#define FFT_SIZE 1024
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -46,43 +48,8 @@
 
 /* USER CODE BEGIN PV */
 volatile uint8_t fftDataReady;
-static const int16_t blackmanHarris256[] =
-{
-		1, 2, 3, 4, 6, 9, 12, 16,
-		21, 27, 33, 41, 50, 60, 72, 85,
-		100, 116, 135, 156, 179, 204, 232, 263,
-		298, 335, 376, 421, 470, 524, 581, 644,
-		712, 785, 864, 948, 1039, 1136, 1240, 1351,
-		1469, 1595, 1729, 1871, 2021, 2180, 2348, 2525,
-		2712, 2908, 3114, 3331, 3557, 3794, 4041, 4300,
-		4569, 4849, 5141, 5443, 5757, 6082, 6419, 6767,
-		7126, 7496, 7877, 8269, 8672, 9085, 9509, 9943,
-		10387, 10840, 11303, 11774, 12255, 12743, 13238, 13741,
-		14251, 14767, 15288, 15814, 16345, 16879, 17416, 17956,
-		18497, 19040, 19582, 20124, 20665, 21203, 21739, 22271,
-		22798, 23320, 23836, 24345, 24846, 25339, 25821, 26294,
-		26756, 27205, 27642, 28066, 28476, 28870, 29249, 29612,
-		29957, 30285, 30595, 30887, 31158, 31410, 31642, 31853,
-		32043, 32212, 32358, 32483, 32585, 32665, 32722, 32756,
-		32767, 32756, 32722, 32665, 32585, 32483, 32358, 32212,
-		32043, 31853, 31642, 31410, 31158, 30887, 30595, 30285,
-		29957, 29612, 29249, 28870, 28476, 28066, 27642, 27205,
-		26756, 26294, 25821, 25339, 24846, 24345, 23836, 23320,
-		22798, 22271, 21739, 21203, 20665, 20124, 19582, 19040,
-		18497, 17956, 17416, 16879, 16345, 15814, 15288, 14767,
-		14251, 13741, 13238, 12743, 12255, 11774, 11303, 10840,
-		10387, 9943, 9509, 9085, 8672, 8269, 7877, 7496,
-		7126, 6767, 6419, 6082, 5757, 5443, 5141, 4849,
-		4569, 4300, 4041, 3794, 3557, 3331, 3114, 2908,
-		2712, 2525, 2348, 2180, 2021, 1871, 1729, 1595,
-		1469, 1351, 1240, 1136, 1039, 948, 864, 785,
-		712, 644, 581, 524, 470, 421, 376, 335,
-		298, 263, 232, 204, 179, 156, 135, 116,
-		100, 85, 72, 60, 50, 41, 33, 27,
-		21, 16, 12, 9, 6, 4, 3, 2
-};
 
-static int16_t fftInOut[256];
+static int16_t fftInOut[FFT_SIZE];
 static uint8_t dispBuf[128][8];
 /* USER CODE END PV */
 
@@ -154,7 +121,7 @@ int main(void)
   // ADC DMA
   LL_DMA_SetPeriphAddress(DMA1, LL_DMA_CHANNEL_1, (uint32_t)&ADC1->DR);
   LL_DMA_SetMemoryAddress(DMA1, LL_DMA_CHANNEL_1, (uint32_t)fftInOut);
-  LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_1, 256);
+  LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_1, FFT_SIZE);
   LL_DMA_EnableIT_TC(DMA1, LL_DMA_CHANNEL_1);
   LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_1);
 
@@ -174,7 +141,7 @@ int main(void)
   LL_TIM_EnableUpdateEvent(TIM3);
 
   static arm_rfft_instance_q15 rfftInstance;
-  arm_rfft_init_q15(&rfftInstance, 256, 0, 1);
+  arm_rfft_init_q15(&rfftInstance, FFT_SIZE, 0, 1);
   fftDataReady = 0;
 
   LL_ADC_REG_StartConversionExtTrig(ADC1, LL_ADC_REG_TRIG_EXT_RISING);
@@ -186,17 +153,17 @@ int main(void)
   {
   	if (fftDataReady)
   	{
-  		for (uint32_t i = 0; i < 256; ++i)
+  		for (uint32_t i = 0; i < FFT_SIZE; ++i)
 					fftInOut[i] = (fftInOut[i] - 2053) << 3;
 
-			static int16_t fftTemp[512];
-			arm_mult_q15(fftInOut, blackmanHarris256, fftInOut, 256);
+			static int16_t fftTemp[FFT_SIZE * 2];
+			arm_mult_q15(fftInOut, blackmanHarris1024, fftInOut, FFT_SIZE);
 			arm_rfft_q15(&rfftInstance, fftInOut, fftTemp);
-			arm_shift_q15(fftInOut, 4, fftInOut, 256);
-			arm_cmplx_mag_fast_q15(fftTemp, fftInOut, 128);
-			arm_vlog_q15(fftInOut, fftInOut, 128);
+			arm_shift_q15(fftInOut, 4, fftInOut, FFT_SIZE);
+			arm_cmplx_mag_fast_q15(fftTemp, fftInOut, FFT_SIZE / 2);
+			arm_vlog_q15(fftInOut, fftInOut, FFT_SIZE / 2);
 
-			for (uint32_t i = 0; i < 128; ++i)
+			for (uint32_t i = 0; i < FFT_SIZE / 2; ++i)
 				fftInOut[i] += 22713;
 
 			UpdateScreen(fftInOut);
@@ -414,7 +381,7 @@ static void MX_TIM3_Init(void)
   /* USER CODE END TIM3_Init 1 */
   TIM_InitStruct.Prescaler = 0;
   TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
-  TIM_InitStruct.Autoreload = 7199;
+  TIM_InitStruct.Autoreload = 2399;
   TIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
   LL_TIM_Init(TIM3, &TIM_InitStruct);
   LL_TIM_DisableARRPreload(TIM3);
@@ -487,8 +454,10 @@ static void UpdateScreen()
 
 	for (uint32_t i = 0; i < 128; ++i)
 	{
-		barHeight[i] = (fftInOut[i] > barHeight[i]) ? fftInOut[i] : MAX(barHeight[i] - BAR_FALL_SPEED, 0);
-		dotHeight[i] = (fftInOut[i] > dotHeight[i]) ? fftInOut[i] : MAX(dotHeight[i] - DOT_FALL_SPEED, 256);
+		int16_t expI = expMap[i];
+
+		barHeight[i] = (fftInOut[expI] > barHeight[i]) ? fftInOut[expI] : MAX(barHeight[i] - BAR_FALL_SPEED, 0);
+		dotHeight[i] = (fftInOut[expI] > dotHeight[i]) ? fftInOut[expI] : MAX(dotHeight[i] - DOT_FALL_SPEED, 256);
 
 		int16_t barH = barHeight[i] >> 8;
 		int16_t dotH = dotHeight[i] >> 8;
