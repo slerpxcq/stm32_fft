@@ -41,7 +41,7 @@ extern "C"
 extern const q15_t sinTable_q15[];
 extern const q31_t sinTable_q31[];
 extern const float32_t sinTable_f32[];
-//extern const q15_t sqrt_initial_lut_q15[];
+extern const q15_t sqrt_initial_lut_q15[];
 extern const q31_t sqrt_initial_lut_q31[];
 // END DUMMY DEFINITIONS
 
@@ -412,8 +412,10 @@ extern const q31_t sqrt_initial_lut_q31[];
   #endif
 
   #if !defined(ARM_DSP_CONFIG_TABLES) || defined(ARM_ALL_FFT_TABLES) || defined(ARM_TABLE_REALCOEF_Q31)
-    extern const q31_t realCoefAQ31[8192];
-    extern const q31_t realCoefBQ31[8192];
+//    extern const q31_t realCoefAQ31[8192];
+//    extern const q31_t realCoefBQ31[8192];
+    extern const q31_t realCoefAQ31[];
+    extern const q31_t realCoefBQ31[];
   #endif
 
   #if !defined(ARM_DSP_CONFIG_TABLES) || defined(ARM_ALL_FFT_TABLES) || defined(ARM_TABLE_REALCOEF_Q15)

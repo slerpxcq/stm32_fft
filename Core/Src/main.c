@@ -33,9 +33,11 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define BAR_FALL_SPEED 512
-#define DOT_FALL_SPEED 128
+#define BAR_FALL_SPEED (1 << 26)
+#define DOT_FALL_SPEED (1 << 24)
 #define FFT_SIZE 1024
+#define DC_BIAS 2052
+#define LOG_MIN 1488522235
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -47,10 +49,15 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-volatile uint8_t fftDataReady;
+volatile uint8_t sampleAvail;
+volatile uint8_t processCplt;
 
-static int16_t fftInOut[FFT_SIZE];
+static uint8_t wrIdx;
+static uint8_t rdIdx;
+static int32_t fftInOut[2][FFT_SIZE];
 static uint8_t dispBuf[128][8];
+
+static arm_rfft_instance_q31 rfftInstance;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -120,7 +127,7 @@ int main(void)
 
   // ADC DMA
   LL_DMA_SetPeriphAddress(DMA1, LL_DMA_CHANNEL_1, (uint32_t)&ADC1->DR);
-  LL_DMA_SetMemoryAddress(DMA1, LL_DMA_CHANNEL_1, (uint32_t)fftInOut);
+  LL_DMA_SetMemoryAddress(DMA1, LL_DMA_CHANNEL_1, (uint32_t)fftInOut[0]);
   LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_1, FFT_SIZE);
   LL_DMA_EnableIT_TC(DMA1, LL_DMA_CHANNEL_1);
   LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_1);
@@ -140,10 +147,12 @@ int main(void)
   LL_TIM_EnableCounter(TIM3);
   LL_TIM_EnableUpdateEvent(TIM3);
 
-  static arm_rfft_instance_q15 rfftInstance;
-  arm_rfft_init_q15(&rfftInstance, FFT_SIZE, 0, 1);
-  fftDataReady = 0;
+  arm_rfft_init_q31(&rfftInstance, FFT_SIZE, 0, 1);
 
+  sampleAvail = 0;
+  processCplt = 1;
+  wrIdx = 0;
+  rdIdx = 1;
   LL_ADC_REG_StartConversionExtTrig(ADC1, LL_ADC_REG_TRIG_EXT_RISING);
   /* USER CODE END 2 */
 
@@ -151,24 +160,41 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-  	if (fftDataReady)
+  	if (sampleAvail && processCplt)
   	{
-  		for (uint32_t i = 0; i < FFT_SIZE; ++i)
-					fftInOut[i] = (fftInOut[i] - 2053) << 3;
+  		sampleAvail = 0;
+  		processCplt = 0;
 
-			static int16_t fftTemp[FFT_SIZE * 2];
-			arm_mult_q15(fftInOut, blackmanHarris1024, fftInOut, FFT_SIZE);
-			arm_rfft_q15(&rfftInstance, fftInOut, fftTemp);
-			arm_shift_q15(fftInOut, 4, fftInOut, FFT_SIZE);
-			arm_cmplx_mag_fast_q15(fftTemp, fftInOut, FFT_SIZE / 2);
-			arm_vlog_q15(fftInOut, fftInOut, FFT_SIZE / 2);
+  		// Swap buffers
+  		wrIdx = !wrIdx;
+  		rdIdx = !rdIdx;
+
+  		// RM0008 13.4.6
+  		// This register must not be written when the channel is enabled.
+  		LL_DMA_DisableChannel(DMA1, LL_DMA_CHANNEL_1);
+  		LL_DMA_SetMemoryAddress(DMA1, LL_DMA_CHANNEL_1, (uint32_t)fftInOut[wrIdx]);
+  		LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_1);
+  		LL_ADC_REG_StartConversionExtTrig(ADC1, LL_ADC_REG_TRIG_EXT_RISING);
+
+  		LL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+
+  		int32_t* rdBuf = fftInOut[rdIdx];
+			for (uint32_t i = 0; i < FFT_SIZE; ++i)
+				rdBuf[i] = (rdBuf[i] - DC_BIAS) << 19;
+
+			static int32_t fftTemp[FFT_SIZE * 2];
+			arm_mult_q31(rdBuf, blackmanHarris1024, rdBuf, FFT_SIZE);
+			arm_rfft_q31(&rfftInstance, rdBuf, fftTemp);
+			arm_cmplx_mag_squared_q31(fftTemp, rdBuf, FFT_SIZE / 2);
+			arm_shift_q31(rdBuf, 13, rdBuf, FFT_SIZE / 2);
+			arm_vlog_q31(rdBuf, rdBuf, FFT_SIZE / 2);
 
 			for (uint32_t i = 0; i < FFT_SIZE / 2; ++i)
-				fftInOut[i] += 22713;
+				rdBuf[i] += LOG_MIN;
 
-			UpdateScreen(fftInOut);
-			fftDataReady = 0;
-			LL_ADC_REG_StartConversionExtTrig(ADC1, LL_ADC_REG_TRIG_EXT_RISING);
+			UpdateScreen(rdBuf);
+
+			LL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
   	}
     /* USER CODE END WHILE */
 
@@ -261,7 +287,7 @@ static void MX_ADC1_Init(void)
 
   LL_DMA_SetPeriphSize(DMA1, LL_DMA_CHANNEL_1, LL_DMA_PDATAALIGN_HALFWORD);
 
-  LL_DMA_SetMemorySize(DMA1, LL_DMA_CHANNEL_1, LL_DMA_MDATAALIGN_HALFWORD);
+  LL_DMA_SetMemorySize(DMA1, LL_DMA_CHANNEL_1, LL_DMA_MDATAALIGN_WORD);
 
   /* USER CODE BEGIN ADC1_Init 1 */
 
@@ -444,31 +470,65 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-static void UpdateScreen()
+__STATIC_INLINE int32_t Lerp(int32_t x, int32_t x0, int32_t y0, int32_t slope)
+{
+	int32_t t = x - x0;
+	t *= slope;
+	t += y0;
+	return t;
+}
+
+static void UpdateScreen(int32_t* buf)
 {
 	static const uint8_t barMap[] = { 0x00, 0x01, 0x03, 0x07, 0x0f, 0x1f, 0x3f, 0x7f, 0xff };
 	static const uint8_t dotMap[] = { 0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 };
 
-	static int16_t barHeight[128];
-	static int16_t dotHeight[128];
+	static int32_t barHeight[128];
+	static int32_t dotHeight[128];
 
-	for (uint32_t i = 0; i < 128; ++i)
+	// Update max value
+	for (int32_t i = 0; i < 128; ++i)
 	{
-		int16_t expI = expMap[i];
+		int32_t expI = expMap[i];
+		if (buf[expI] > barHeight[i])
+			dotHeight[i] = barHeight[i] = buf[expI];
+	}
 
-		barHeight[i] = (fftInOut[expI] > barHeight[i]) ? fftInOut[expI] : MAX(barHeight[i] - BAR_FALL_SPEED, 0);
-		dotHeight[i] = (fftInOut[expI] > dotHeight[i]) ? fftInOut[expI] : MAX(dotHeight[i] - DOT_FALL_SPEED, 256);
+	int32_t x0 = 0, x1 = 0;
+	for (int32_t i = 1; i < 128; ++i)
+	{
+		if (expMap[i] != expMap[i-1])
+			x1 = i;
 
-		int16_t barH = barHeight[i] >> 8;
-		int16_t dotH = dotHeight[i] >> 8;
+		if ((x1 - x0) > 1)
+		{
+			int32_t y0 = barHeight[x0], y1 = barHeight[x1];
+			int32_t slope = (y1 - y0) / (x1 - x0);
+			for (int32_t x = x0 + 1; x < x1; ++x)
+			{
+				barHeight[x] = Lerp(x, x0, y0, slope);
+				dotHeight[x] = MAX(dotHeight[x], barHeight[x]);
+			}
+		}
 
-		for (uint32_t j = 0; j < 8; ++j)
+		x0 = x1;
+	}
+
+	for (int32_t i = 0; i < 128; ++i)
+	{
+		int32_t barH = barHeight[i] >> 25;
+		int32_t dotH = dotHeight[i] >> 25;
+
+		for (int32_t j = 0; j < 8; ++j)
 		{
 			dispBuf[i][j] = (barH > 7) ? 0xff : (barH < 0) ? 0x00 : barMap[barH];
 			dispBuf[i][j] |= (dotH > 7 || dotH < 0) ? 0x00 : dotMap[dotH];
 			barH -= 8;
 			dotH -= 8;
 		}
+
+		barHeight[i] = MAX(barHeight[i] - BAR_FALL_SPEED, (1 << 25));
+		dotHeight[i] = MAX(dotHeight[i] - DOT_FALL_SPEED, (1 << 25));
 	}
 
 	LL_SPI_EnableDMAReq_TX(SPI1);

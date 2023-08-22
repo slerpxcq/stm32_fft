@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-extern const int16_t expMap[];
-extern const int16_t blackmanHarris1024[];
+extern const int32_t expMap[];
+extern const int32_t blackmanHarris1024[];
 
 #endif // _TABLES_H_

@@ -57,7 +57,8 @@
 /* External variables --------------------------------------------------------*/
 
 /* USER CODE BEGIN EV */
-extern uint8_t fftDataReady;
+extern volatile uint8_t sampleAvail;
+extern volatile uint8_t processCplt;
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -201,7 +202,7 @@ void DMA1_Channel1_IRQHandler(void)
   /* USER CODE BEGIN DMA1_Channel1_IRQn 0 */
 	LL_DMA_ClearFlag_TC1(DMA1);
 	LL_ADC_REG_StopConversionExtTrig(ADC1);
-	fftDataReady = 1;
+	sampleAvail = 1;
   /* USER CODE END DMA1_Channel1_IRQn 0 */
 
   /* USER CODE BEGIN DMA1_Channel1_IRQn 1 */
@@ -217,7 +218,8 @@ void DMA1_Channel3_IRQHandler(void)
   /* USER CODE BEGIN DMA1_Channel3_IRQn 0 */
 	LL_DMA_ClearFlag_TC3(DMA1);
 	LL_SPI_DisableDMAReq_TX(SPI1);
-	LL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+	processCplt = 1;
+
   /* USER CODE END DMA1_Channel3_IRQn 0 */
 
   /* USER CODE BEGIN DMA1_Channel3_IRQn 1 */

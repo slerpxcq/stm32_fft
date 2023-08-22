@@ -147,7 +147,8 @@ arm_status arm_rfft_init_q31(
 #endif
 #if !defined(ARM_DSP_CONFIG_TABLES) || defined(ARM_ALL_FFT_TABLES) || (defined(ARM_TABLE_TWIDDLECOEF_Q31_512) && defined(ARM_TABLE_BITREVIDX_FXT_512))
     case 1024U:
-        S->twidCoefRModifier = 8U;
+        // S->twidCoefRModifier = 8U;
+    		S->twidCoefRModifier = 1U;
         #if defined(ARM_MATH_MVEI) && !defined(ARM_MATH_AUTOVECTORIZE)
            status=arm_cfft_init_q31(&(S->cfftInst),512);
            if (status != ARM_MATH_SUCCESS)
