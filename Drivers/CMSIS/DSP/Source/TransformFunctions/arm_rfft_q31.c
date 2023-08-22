@@ -300,6 +300,7 @@ void arm_split_rfft_q31(
 
      //WTF?
      //pCoefA = pCoefA + (2 * modifier - 1);
+
      pCoefA = pCoefA + (2 * modifier);
 
      /* Decrement loop count */

@@ -33,17 +33,16 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define BAR_FALL_SPEED (1 << 26)
-#define DOT_FALL_SPEED (1 << 24)
+#define BAR_FALL_SPEED (1U << 26)
+#define DOT_FALL_SPEED (1U << 23)
 #define FFT_SIZE 1024
 #define DC_BIAS 2052
-#define LOG_MIN 1488522235
+#define RESULT_FLOOR 500000000
+#define RESULT_SCALE 4
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
-#define MAX(x, y) ((x) > (y) ? (x) : (y))
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -69,12 +68,34 @@ static void MX_SPI1_Init(void);
 static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 static void UpdateScreen();
+static void FastMag(int32_t* pSrc, int32_t* pDst, uint32_t blockSize);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+__STATIC_INLINE int32_t Min(int32_t x, int32_t y)
+{
+	return x <= y ? x : y;
+}
 
+__STATIC_INLINE int32_t Max(int32_t x, int32_t y)
+{
+	return x >= y ? x : y;
+}
+
+__STATIC_INLINE int32_t Abs(int32_t x)
+{
+	return x >= 0 ? x : -x;
+}
+
+__STATIC_INLINE int32_t Lerp(int32_t x, int32_t x0, int32_t y0, int32_t slope)
+{
+	int32_t t = x - x0;
+	t *= slope;
+	t += y0;
+	return t;
+}
 /* USER CODE END 0 */
 
 /**
@@ -185,12 +206,20 @@ int main(void)
 			static int32_t fftTemp[FFT_SIZE * 2];
 			arm_mult_q31(rdBuf, blackmanHarris1024, rdBuf, FFT_SIZE);
 			arm_rfft_q31(&rfftInstance, rdBuf, fftTemp);
-			arm_cmplx_mag_squared_q31(fftTemp, rdBuf, FFT_SIZE / 2);
-			arm_shift_q31(rdBuf, 13, rdBuf, FFT_SIZE / 2);
+			FastMag(fftTemp, rdBuf, FFT_SIZE / 2);
+			arm_shift_q31(rdBuf, 5, rdBuf, FFT_SIZE / 2);
 			arm_vlog_q31(rdBuf, rdBuf, FFT_SIZE / 2);
 
 			for (uint32_t i = 0; i < FFT_SIZE / 2; ++i)
-				rdBuf[i] += LOG_MIN;
+			{
+				int32_t tmp = rdBuf[i];
+
+				tmp += RESULT_FLOOR;
+				tmp = Max(0, tmp);
+				tmp *= RESULT_SCALE;
+
+				rdBuf[i] = tmp;
+			}
 
 			UpdateScreen(rdBuf);
 
@@ -470,12 +499,29 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-__STATIC_INLINE int32_t Lerp(int32_t x, int32_t x0, int32_t y0, int32_t slope)
+
+static void FastMag(int32_t* pSrc, int32_t* pDst, uint32_t blockSize)
 {
-	int32_t t = x - x0;
-	t *= slope;
-	t += y0;
-	return t;
+	 int32_t* pRe = &pSrc[0];
+	 int32_t* pIm = &pSrc[1];
+	 int32_t* pOut = &pDst[0];
+
+	 uint32_t i = blockSize - 1;
+
+	 while (i > 0)
+	 {
+		 int32_t absRe = Abs(*pRe);
+		 int32_t absIm = Abs(*pIm);
+
+		 int32_t max = Max(absRe, absIm);
+		 int32_t min = Min(absRe, absIm);
+
+		 *pOut++ = max + ((3 * min) >> 3);
+
+		 pRe += 2;
+		 pIm += 2;
+		 --i;
+	 }
 }
 
 static void UpdateScreen(int32_t* buf)
@@ -486,14 +532,11 @@ static void UpdateScreen(int32_t* buf)
 	static int32_t barHeight[128];
 	static int32_t dotHeight[128];
 
-	// Update max value
+	// Pass 1: Update bar height
 	for (int32_t i = 0; i < 128; ++i)
-	{
-		int32_t expI = expMap[i];
-		if (buf[expI] > barHeight[i])
-			dotHeight[i] = barHeight[i] = buf[expI];
-	}
+		barHeight[i] = Max(barHeight[i], buf[expMap[i]]);
 
+	// Pass 2: Linear interpolate between bars
 	int32_t x0 = 0, x1 = 0;
 	for (int32_t i = 1; i < 128; ++i)
 	{
@@ -505,15 +548,17 @@ static void UpdateScreen(int32_t* buf)
 			int32_t y0 = barHeight[x0], y1 = barHeight[x1];
 			int32_t slope = (y1 - y0) / (x1 - x0);
 			for (int32_t x = x0 + 1; x < x1; ++x)
-			{
 				barHeight[x] = Lerp(x, x0, y0, slope);
-				dotHeight[x] = MAX(dotHeight[x], barHeight[x]);
-			}
 		}
 
 		x0 = x1;
 	}
 
+	// Pass 3: Update dot height
+	for (int32_t i = 0; i < 128; ++i)
+		dotHeight[i] = Max(dotHeight[i], barHeight[i]);
+
+	// Update display buffer
 	for (int32_t i = 0; i < 128; ++i)
 	{
 		int32_t barH = barHeight[i] >> 25;
@@ -527,8 +572,8 @@ static void UpdateScreen(int32_t* buf)
 			dotH -= 8;
 		}
 
-		barHeight[i] = MAX(barHeight[i] - BAR_FALL_SPEED, (1 << 25));
-		dotHeight[i] = MAX(dotHeight[i] - DOT_FALL_SPEED, (1 << 25));
+		barHeight[i] = Max(barHeight[i] - BAR_FALL_SPEED, (1 << 25));
+		dotHeight[i] = Max(dotHeight[i] - DOT_FALL_SPEED, (1 << 25));
 	}
 
 	LL_SPI_EnableDMAReq_TX(SPI1);
