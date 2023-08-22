@@ -35,6 +35,7 @@
 /* USER CODE BEGIN PD */
 #define BAR_FALL_SPEED (1U << 26)
 #define DOT_FALL_SPEED (1U << 23)
+#define DOT_TTL 48
 #define FFT_SIZE 1024
 #define DC_BIAS 2052
 #define RESULT_FLOOR 500000000
@@ -502,25 +503,15 @@ static void MX_GPIO_Init(void)
 
 static void FastMag(int32_t* pSrc, int32_t* pDst, uint32_t blockSize)
 {
-	 int32_t* pRe = &pSrc[0];
-	 int32_t* pIm = &pSrc[1];
-	 int32_t* pOut = &pDst[0];
-
-	 uint32_t i = blockSize - 1;
-
-	 while (i > 0)
+	 for (uint32_t i = 0; i < blockSize; ++i)
 	 {
-		 int32_t absRe = Abs(*pRe);
-		 int32_t absIm = Abs(*pIm);
+		 int32_t absRe = Abs(pSrc[2 * i]);
+		 int32_t absIm = Abs(pSrc[2 * i + 1]);
 
 		 int32_t max = Max(absRe, absIm);
 		 int32_t min = Min(absRe, absIm);
 
-		 *pOut++ = max + ((3 * min) >> 3);
-
-		 pRe += 2;
-		 pIm += 2;
-		 --i;
+		 pDst[i] = max + ((3 * min) >> 3);
 	 }
 }
 
@@ -531,6 +522,7 @@ static void UpdateScreen(int32_t* buf)
 
 	static int32_t barHeight[128];
 	static int32_t dotHeight[128];
+	static uint8_t dotTTL[128];
 
 	// Pass 1: Update bar height
 	for (int32_t i = 0; i < 128; ++i)
@@ -543,20 +535,23 @@ static void UpdateScreen(int32_t* buf)
 		if (expMap[i] != expMap[i-1])
 			x1 = i;
 
-		if ((x1 - x0) > 1)
-		{
-			int32_t y0 = barHeight[x0], y1 = barHeight[x1];
-			int32_t slope = (y1 - y0) / (x1 - x0);
-			for (int32_t x = x0 + 1; x < x1; ++x)
-				barHeight[x] = Lerp(x, x0, y0, slope);
-		}
+		int32_t y0 = barHeight[x0], y1 = barHeight[x1];
+		int32_t slope = (y1 - y0) / (x1 - x0);
+		for (int32_t x = x0 + 1; x < x1; ++x)
+			barHeight[x] = Lerp(x, x0, y0, slope);
 
 		x0 = x1;
 	}
 
-	// Pass 3: Update dot height
+	// Pass 3: Update dot height and TTL
 	for (int32_t i = 0; i < 128; ++i)
-		dotHeight[i] = Max(dotHeight[i], barHeight[i]);
+	{
+		if (dotHeight[i] < barHeight[i])
+		{
+			dotHeight[i] = barHeight[i];
+			dotTTL[i] = DOT_TTL;
+		}
+	}
 
 	// Update display buffer
 	for (int32_t i = 0; i < 128; ++i)
@@ -571,9 +566,21 @@ static void UpdateScreen(int32_t* buf)
 			barH -= 8;
 			dotH -= 8;
 		}
+	}
 
+	// Holding and smooth falling
+	for (int32_t i = 0; i < 128; ++i)
+	{
 		barHeight[i] = Max(barHeight[i] - BAR_FALL_SPEED, (1 << 25));
-		dotHeight[i] = Max(dotHeight[i] - DOT_FALL_SPEED, (1 << 25));
+
+		if (dotTTL[i] == 0)
+		{
+			dotHeight[i] = Max(dotHeight[i] - DOT_FALL_SPEED, (1 << 25));
+		}
+		else
+		{
+			--dotTTL[i];
+		}
 	}
 
 	LL_SPI_EnableDMAReq_TX(SPI1);
