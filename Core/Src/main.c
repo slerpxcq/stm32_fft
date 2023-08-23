@@ -520,8 +520,8 @@ static void FastMag(int32_t* pSrc, int32_t* pDst, uint32_t blockSize)
 
 static void UpdateScreen(int32_t* buf)
 {
-	static const uint8_t barMap[] = { 0x00, 0x01, 0x03, 0x07, 0x0f, 0x1f, 0x3f, 0x7f, 0xff };
-	static const uint8_t dotMap[] = { 0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 };
+	static const uint8_t barMap[] = { 0x01, 0x03, 0x07, 0x0f, 0x1f, 0x3f, 0x7f, 0xff };
+	static const uint8_t dotMap[] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 };
 
 	static int32_t barHeight[128];
 	static int32_t dotHeight[128];
@@ -581,8 +581,8 @@ static void UpdateScreen(int32_t* buf)
 
 		for (int32_t j = 0; j < 8; ++j)
 		{
-			dispBuf[i][j] = (barH > 7) ? 0xff : (barH < 0) ? 0x00 : barMap[barH];
-			dispBuf[i][j] |= (dotH > 7 || dotH < 0) ? 0x00 : dotMap[dotH];
+			dispBuf[i][j] = (barH > 8) ? 0xff : (barH < 1) ? 0x00 : barMap[barH - 1];
+			dispBuf[i][j] |= (dotH > 8 || dotH < 1) ? 0x00 : dotMap[dotH - 1];
 			barH -= 8;
 			dotH -= 8;
 		}
