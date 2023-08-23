@@ -35,10 +35,10 @@
 /* USER CODE BEGIN PD */
 #define BAR_FALL_SPEED (1U << 26)
 #define DOT_FALL_SPEED (1U << 23)
-#define DOT_TTL 48
+#define DOT_TTL 64
 #define FFT_SIZE 1024
 #define DC_BIAS 2052
-#define RESULT_FLOOR 500000000
+#define RESULT_FLOOR 400000000
 #define RESULT_SCALE 4
 /* USER CODE END PD */
 
@@ -208,7 +208,10 @@ int main(void)
 			arm_mult_q31(rdBuf, blackmanHarris1024, rdBuf, FFT_SIZE);
 			arm_rfft_q31(&rfftInstance, rdBuf, fftTemp);
 			FastMag(fftTemp, rdBuf, FFT_SIZE / 2);
-			arm_shift_q31(rdBuf, 5, rdBuf, FFT_SIZE / 2);
+
+			for (uint32_t i = 0; i < FFT_SIZE / 2; ++i)
+				rdBuf[i] *= 33;
+
 			arm_vlog_q31(rdBuf, rdBuf, FFT_SIZE / 2);
 
 			for (uint32_t i = 0; i < FFT_SIZE / 2; ++i)
@@ -528,7 +531,7 @@ static void UpdateScreen(int32_t* buf)
 	for (int32_t i = 0; i < 128; ++i)
 		barHeight[i] = Max(barHeight[i], buf[expMap[i]]);
 
-	// Pass 2: Linear interpolate between bars
+	// Pass 2: Interpolate between bars
 	int32_t x0 = 0, x1 = 0;
 	for (int32_t i = 1; i < 128; ++i)
 	{
@@ -536,9 +539,26 @@ static void UpdateScreen(int32_t* buf)
 			x1 = i;
 
 		int32_t y0 = barHeight[x0], y1 = barHeight[x1];
-		int32_t slope = (y1 - y0) / (x1 - x0);
+
+		// Linear interpolate
+//		int32_t slope = (y1 - y0) / (x1 - x0);
+//		for (int32_t x = x0 + 1; x < x1; ++x)
+//		{
+//			barHeight[x] = Lerp(x, x0, y0, slope);
+//		}
+
+		// LUT interpolate
 		for (int32_t x = x0 + 1; x < x1; ++x)
-			barHeight[x] = Lerp(x, x0, y0, slope);
+		{
+			int32_t tabIdx = ((x - x0) * 32) / (x1 - x0);
+			int32_t tabVal = sinInterp[tabIdx];
+
+			int32_t tmp = y1 - y0;
+			arm_mult_q31(&tmp, &tabVal, &tmp, 1);
+			tmp += y0;
+
+			barHeight[x] = tmp;
+		}
 
 		x0 = x1;
 	}
