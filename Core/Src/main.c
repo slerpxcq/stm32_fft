@@ -40,6 +40,7 @@
 #define DC_BIAS 2052
 #define RESULT_FLOOR 400000000
 #define RESULT_SCALE 4
+#define INTERP_COUNT 8
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -201,30 +202,6 @@ int main(void)
   		LL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
   		int32_t* rdBuf = fftInOut[rdIdx];
-			for (uint32_t i = 0; i < FFT_SIZE; ++i)
-				rdBuf[i] = (rdBuf[i] - DC_BIAS) << 19;
-
-			static int32_t fftTemp[FFT_SIZE * 2];
-			arm_mult_q31(rdBuf, blackmanHarris1024, rdBuf, FFT_SIZE);
-			arm_rfft_q31(&rfftInstance, rdBuf, fftTemp);
-			FastMag(fftTemp, rdBuf, FFT_SIZE / 2);
-
-			for (uint32_t i = 0; i < FFT_SIZE / 2; ++i)
-				rdBuf[i] *= 33;
-
-			arm_vlog_q31(rdBuf, rdBuf, FFT_SIZE / 2);
-
-			for (uint32_t i = 0; i < FFT_SIZE / 2; ++i)
-			{
-				int32_t tmp = rdBuf[i];
-
-				tmp += RESULT_FLOOR;
-				tmp = Max(0, tmp);
-				tmp *= RESULT_SCALE;
-
-				rdBuf[i] = tmp;
-			}
-
 			UpdateScreen(rdBuf);
 
 			LL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
@@ -440,7 +417,7 @@ static void MX_TIM3_Init(void)
   /* USER CODE END TIM3_Init 1 */
   TIM_InitStruct.Prescaler = 0;
   TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
-  TIM_InitStruct.Autoreload = 2399;
+  TIM_InitStruct.Autoreload = 1999;
   TIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
   LL_TIM_Init(TIM3, &TIM_InitStruct);
   LL_TIM_DisableARRPreload(TIM3);
@@ -503,7 +480,6 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
 static void FastMag(int32_t* pSrc, int32_t* pDst, uint32_t blockSize)
 {
 	 for (uint32_t i = 0; i < blockSize; ++i)
@@ -518,54 +494,152 @@ static void FastMag(int32_t* pSrc, int32_t* pDst, uint32_t blockSize)
 	 }
 }
 
-static void UpdateScreen(int32_t* buf)
+static void SinInterp(int32_t* height)
 {
-	static const uint8_t barMap[] = { 0x01, 0x03, 0x07, 0x0f, 0x1f, 0x3f, 0x7f, 0xff };
-	static const uint8_t dotMap[] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 };
-
-	static int32_t barHeight[128];
-	static int32_t dotHeight[128];
-	static uint8_t dotTTL[128];
-
-	// Pass 1: Update bar height
-	for (int32_t i = 0; i < 128; ++i)
-		barHeight[i] = Max(barHeight[i], buf[expMap[i]]);
-
-	// Pass 2: Interpolate between bars
 	int32_t x0 = 0, x1 = 0;
 	for (int32_t i = 1; i < 128; ++i)
 	{
 		if (expMap[i] != expMap[i-1])
 			x1 = i;
 
-		int32_t y0 = barHeight[x0], y1 = barHeight[x1];
+		int32_t y0 = height[x0], y1 = height[x1];
 
-		// Linear interpolate
-//		int32_t slope = (y1 - y0) / (x1 - x0);
-//		for (int32_t x = x0 + 1; x < x1; ++x)
-//		{
-//			barHeight[x] = Lerp(x, x0, y0, slope);
-//		}
-
-		// LUT interpolate
-		for (int32_t x = x0 + 1; x < x1; ++x)
+		if (x1 - x0 > 1)
 		{
-			int32_t tabIdx = ((x - x0) * 32) / (x1 - x0);
-			int32_t tabVal = sinInterp[tabIdx];
+			// int32_t slope = (y1 - y0) / (x1 - x0);
+			for (int32_t x = x0 + 1; x < x1; ++x)
+			{
+				// Linear
+				// height[x] = Lerp(x, x0, y0, slope);
 
-			int32_t tmp = y1 - y0;
-			arm_mult_q31(&tmp, &tabVal, &tmp, 1);
-			tmp += y0;
+				// Tabular
+				int32_t tabIdx = ((x - x0) * 32) / (x1 - x0);
+				int32_t tabVal = sinInterp[tabIdx];
 
-			barHeight[x] = tmp;
+				int32_t tmp = y1 - y0;
+				arm_mult_q31(&tmp, &tabVal, &tmp, 1);
+				tmp += y0;
+
+				height[x] = tmp;
+			}
 		}
 
 		x0 = x1;
 	}
+}
 
-	// Pass 3: Update dot height and TTL
+static void I32ToF32(int32_t* inout, uint32_t blockSize)
+{
+	for (uint32_t i = 0; i < blockSize; ++i)
+	{
+		float32_t tmp;
+		tmp = (float32_t)inout[i];
+		inout[i] = *(int32_t*)&tmp;
+	}
+}
+
+static void F32ToI32(int32_t* inout, uint32_t blockSize)
+{
+	for (uint32_t i = 0; i < blockSize; ++i)
+	{
+		int32_t tmp;
+		tmp = (int32_t)(*(float32_t*)&inout[i]);
+		inout[i] = tmp;
+	}
+}
+
+static void CubicInterp(int32_t* height)
+{
+	int32_t knownX[INTERP_COUNT], knownY[INTERP_COUNT];
+	uint8_t j = 0;
+
+	// Find all jump points
+	for (int32_t i = 1; i < 128; ++i)
+	{
+		if (expMap[i] != expMap[i-1])
+		{
+			knownX[j] = i;
+			knownY[j] = height[i];
+			++j;
+
+			if (j == INTERP_COUNT)
+				break;
+		}
+	}
+
+	int32_t interpEnd = knownX[INTERP_COUNT - 1];
+
+	int32_t outX[64];
+	for (uint32_t i = 0; i < interpEnd; ++i)
+		outX[i] = i;
+
+	I32ToF32(outX, interpEnd);
+	I32ToF32(knownX, INTERP_COUNT);
+	I32ToF32(knownY, INTERP_COUNT);
+
+	static arm_spline_instance_f32 splineInstance;
+	static float32_t coeffs[3 * (INTERP_COUNT - 1)];
+	static float32_t tmpBuf[2 * INTERP_COUNT - 1];
+
+	arm_spline_init_f32(&splineInstance, ARM_SPLINE_NATURAL,
+			(float32_t*)knownX, (float32_t*)knownY, INTERP_COUNT, coeffs, tmpBuf);
+	I32ToF32(height, interpEnd);
+	arm_spline_f32(&splineInstance, (float32_t*)outX, (float32_t*)height, interpEnd);
+	F32ToI32(height, interpEnd);
+}
+
+static void UpdateScreen(int32_t* buf)
+{
+	static const uint8_t barMap[] = { 0x01, 0x03, 0x07, 0x0f, 0x1f, 0x3f, 0x7f, 0xff };
+	static const uint8_t dotMap[] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 };
+
+	static int32_t fftTemp[FFT_SIZE * 2];
+	static int32_t barHeight[128];
+	static int32_t dotHeight[128];
+	static uint8_t dotTTL[128];
+
+	// Subtract DC bias and align to left
+	for (uint32_t i = 0; i < FFT_SIZE; ++i)
+		buf[i] = (buf[i] - DC_BIAS) << 19;
+
+	// Apply window function
+	arm_mult_q31(buf, blackmanHarris1024, buf, FFT_SIZE);
+
+	// Do FFT
+	arm_rfft_q31(&rfftInstance, buf, fftTemp);
+
+	// Take magnitude and scale up
+	FastMag(fftTemp, buf, FFT_SIZE / 2);
+	for (uint32_t i = 0; i < FFT_SIZE / 2; ++i)
+		buf[i] <<= 5;
+
+	// Logarithmic remapping; here fftTemp is reused due to memory limitation
+	int32_t* currHeight = fftTemp;
+	for (int32_t i = 0; i < 128; ++i)
+		currHeight[i] = buf[expMap[i]];
+
+	// Take log, shift, scale
+	arm_vlog_q31(currHeight, currHeight, 128);
+
+	for (uint32_t i = 0; i < 128; ++i)
+	{
+		int32_t tmp = currHeight[i];
+
+		tmp += RESULT_FLOOR;
+		tmp = Max(0, tmp);
+		tmp *= RESULT_SCALE;
+
+		currHeight[i] = tmp;
+	}
+
+	// Interpolation
+	 CubicInterp(currHeight);
+//	SinInterp(currHeight);
+
+	// Update bar height, dot height and TTL
 	for (int32_t i = 0; i < 128; ++i)
 	{
+		barHeight[i] = Max(barHeight[i], currHeight[i]);
 		if (dotHeight[i] < barHeight[i])
 		{
 			dotHeight[i] = barHeight[i];
