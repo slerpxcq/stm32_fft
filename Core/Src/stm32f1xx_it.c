@@ -219,6 +219,7 @@ void DMA1_Channel3_IRQHandler(void)
 	LL_DMA_ClearFlag_TC3(DMA1);
 	LL_SPI_DisableDMAReq_TX(SPI1);
 	processCplt = 1;
+	LL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
   /* USER CODE END DMA1_Channel3_IRQn 0 */
 

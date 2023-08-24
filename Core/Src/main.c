@@ -40,7 +40,7 @@
 #define DC_BIAS 2052
 #define RESULT_FLOOR 400000000
 #define RESULT_SCALE 4
-#define INTERP_COUNT 8
+#define INTERP_COUNT 12
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -203,8 +203,6 @@ int main(void)
 
   		int32_t* rdBuf = fftInOut[rdIdx];
 			UpdateScreen(rdBuf);
-
-			LL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
   	}
     /* USER CODE END WHILE */
 
