@@ -72,10 +72,10 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define SSD1306_RES_Pin LL_GPIO_PIN_0
-#define SSD1306_RES_GPIO_Port GPIOB
-#define SSD1306_DC_Pin LL_GPIO_PIN_1
-#define SSD1306_DC_GPIO_Port GPIOB
+#define SSD1362_RES_Pin LL_GPIO_PIN_0
+#define SSD1362_RES_GPIO_Port GPIOB
+#define SSD1362_DC_Pin LL_GPIO_PIN_1
+#define SSD1362_DC_GPIO_Port GPIOB
 #define LED_Pin LL_GPIO_PIN_12
 #define LED_GPIO_Port GPIOB
 #ifndef NVIC_PRIORITYGROUP_0
