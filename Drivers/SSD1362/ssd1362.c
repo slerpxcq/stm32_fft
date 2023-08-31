@@ -40,7 +40,7 @@ void SSD1362_Clear()
 {
     SSD1362_DATA();
     for (uint16_t i = 0; i < SSD1362_COMS * SSD1362_SEGS / 2; ++i)
-    	SSD1362_TRANSMIT_BYTE(0x0);
+    	SSD1362_TRANSMIT_BYTE(0);
 }
 
 void SSD1362_Init()

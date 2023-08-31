@@ -50,7 +50,7 @@ static uint8_t rdIdx;
 static int32_t fftInOut[2][FFT_SIZE];
 
 extern arm_rfft_instance_q31 rfftInstance;
-extern uint8_t dispBuf[128][8];
+extern uint8_t dispBuf[SSD1362_SEGS / 2][SSD1362_COMS];
 
 
 /* USER CODE END PV */
@@ -128,7 +128,7 @@ int main(void)
   // SPI DMA configuration
   LL_DMA_SetPeriphAddress(DMA1, LL_DMA_CHANNEL_3, (uint32_t)&SPI1->DR);
 	LL_DMA_SetMemoryAddress(DMA1, LL_DMA_CHANNEL_3, (uint32_t)dispBuf);
-	LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_3, 8192);
+	LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_3, sizeof(dispBuf));
 	LL_DMA_EnableIT_TC(DMA1, LL_DMA_CHANNEL_3);
 	LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_3);
 
@@ -173,8 +173,7 @@ int main(void)
 
   		LL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
-  		int32_t* rdBuf = fftInOut[rdIdx];
-			UpdateScreen(rdBuf);
+			UpdateScreen(fftInOut[rdIdx]);
   	}
     /* USER CODE END WHILE */
 
@@ -354,7 +353,7 @@ static void MX_SPI1_Init(void)
   SPI_InitStruct.ClockPolarity = LL_SPI_POLARITY_LOW;
   SPI_InitStruct.ClockPhase = LL_SPI_PHASE_1EDGE;
   SPI_InitStruct.NSS = LL_SPI_NSS_SOFT;
-  SPI_InitStruct.BaudRate = LL_SPI_BAUDRATEPRESCALER_DIV8;
+  SPI_InitStruct.BaudRate = LL_SPI_BAUDRATEPRESCALER_DIV4;
   SPI_InitStruct.BitOrder = LL_SPI_MSB_FIRST;
   SPI_InitStruct.CRCCalculation = LL_SPI_CRCCALCULATION_DISABLE;
   SPI_InitStruct.CRCPoly = 10;

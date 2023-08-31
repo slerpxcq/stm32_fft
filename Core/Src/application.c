@@ -224,7 +224,7 @@ void UpdateScreen(int32_t* buf)
 
     if (dotTTL[i] == 0)
     {
-      dotHeight[i] = Max(dotHeight[i] - DOT_FALL_SPEED, (1 << 9U));
+      dotHeight[i] = Max(dotHeight[i] - DOT_FALL_SPEED, (1U << 8));
     }
     else
     {
