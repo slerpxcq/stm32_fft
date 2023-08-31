@@ -133,10 +133,6 @@ static void CubicInterp(int32_t* height)
 
 void UpdateScreen(int32_t* buf)
 {
-//  static const uint8_t barMap[] = { 0x01, 0x03, 0x07, 0x0f, 0x1f, 0x3f, 0x7f, 0xff };
-//  static const uint8_t dotMap[] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 };
-
-  // static int32_t fftTemp[FFT_SIZE * 2];
   static int16_t barHeight[SSD1362_SEGS];
   static int16_t dotHeight[SSD1362_SEGS];
   static uint8_t dotTTL[SSD1362_SEGS];

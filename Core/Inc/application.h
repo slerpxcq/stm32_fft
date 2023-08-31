@@ -11,8 +11,8 @@
 #define DOT_TTL 64
 #define FFT_SIZE 1024	// If you change this, everything will be broken...
 #define DC_BIAS 2052
-#define RESULT_FLOOR 400000000U
-#define RESULT_SCALE 6U
+#define RESULT_FLOOR 280000000U
+#define RESULT_SCALE 8U
 #define INTERP_COUNT 30U
 
 void UpdateScreen(int32_t* buf);
