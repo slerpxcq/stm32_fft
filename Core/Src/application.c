@@ -202,8 +202,16 @@ void UpdateScreen(int32_t* buf)
   	for (uint32_t j = 0; j < SSD1362_COMS; ++j)
   	{
   		dispBuf[i][j] = 0;
+  		// Uniform fill
+#if !FILL_GRADIENT
   		dispBuf[i][j] |= (barH0 > 0) ? 0xf0 : 0;
   		dispBuf[i][j]	|= (barH1 > 0) ? 0x0f : 0;
+
+#else
+  		// Gradient fill
+  		dispBuf[i][j] |= (barH0 < 16 && barH0 > 0) ? ((16 - barH0) << 4) : 0;
+  		dispBuf[i][j] |= (barH1 < 16 && barH1 > 0) ? (16 - barH0) : 0;
+#endif
   		dispBuf[i][j] |= (dotH0 == 0) ? 0xf0 : 0;
   		dispBuf[i][j] |= (dotH1 == 0) ? 0x0f : 0;
   		--barH0;
