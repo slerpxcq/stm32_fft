@@ -26,7 +26,7 @@ __STATIC_INLINE int32_t Lerp(int32_t x, int32_t x0, int32_t y0, int32_t slope)
 arm_rfft_instance_q31 rfftInstance;
 uint8_t dispBuf[SSD1362_SEGS / 2][SSD1362_COMS];
 
-static void FastMag(int32_t* pSrc, int32_t* pDst, uint32_t blockSize)
+static void FastMagnitude(int32_t* pSrc, int32_t* pDst, uint32_t blockSize)
 {
    for (uint32_t i = 0; i < blockSize; ++i)
    {
@@ -96,7 +96,7 @@ static void F32ToI32(int32_t* inout, uint32_t blockSize)
   }
 }
 
-static void CubicInterp(int32_t* height)
+static void CubicSplineInterpolate(int32_t* height)
 {
   int32_t knownX[INTERP_COUNT], knownY[INTERP_COUNT];
   uint8_t j = 0;
@@ -131,51 +131,56 @@ static void CubicInterp(int32_t* height)
   F32ToI32(height, interpEnd);
 }
 
-void UpdateScreen(int32_t* buf)
+void FFTResultToHeight(int32_t* fftResult, int32_t* currHeight)
+{
+	// Subtract DC bias and align to left
+	for (uint32_t i = 0; i < FFT_SIZE; ++i)
+		fftResult[i] = (fftResult[i] - DC_BIAS) << 19;
+
+	// Apply window function
+	arm_mult_q31(fftResult, blackmanHarris1024, fftResult, FFT_SIZE);
+
+	// Do FFT
+	// Reuse display buffer due to memory limitation
+	// Note that display buffer happened to have the same size required by fftTemp, what a coincidence...
+	int32_t* fftTemp = (int32_t*)dispBuf;
+	arm_rfft_q31(&rfftInstance, fftResult, fftTemp);
+
+	// Take magnitude and scale up
+	FastMagnitude(fftTemp, fftResult, FFT_SIZE / 2);
+	for (uint32_t i = 0; i < FFT_SIZE / 2; ++i)
+		fftResult[i] <<= 5;
+
+	// Logarithmic remapping; here fftTemp is reused, again, due to memory limitation
+	for (int32_t i = 0; i < SSD1362_SEGS; ++i)
+		currHeight[i] = fftResult[expMap[i]];
+
+	// Take log, shift, scale, clamp
+	arm_vlog_q31(currHeight, currHeight, SSD1362_SEGS);
+
+	for (uint32_t i = 0; i < SSD1362_SEGS; ++i)
+	{
+		int32_t tmp = currHeight[i];
+
+		tmp += RESULT_FLOOR;
+		tmp = Max(0, tmp);
+		tmp *= RESULT_SCALE;
+
+		currHeight[i] = tmp;
+	}
+}
+
+void UpdateDisplayBuffer(int32_t* fftResult)
 {
   static int16_t barHeight[SSD1362_SEGS];
   static int16_t dotHeight[SSD1362_SEGS];
   static uint8_t dotTTL[SSD1362_SEGS];
 
-  // Subtract DC bias and align to left
-  for (uint32_t i = 0; i < FFT_SIZE; ++i)
-    buf[i] = (buf[i] - DC_BIAS) << 19;
-
-  // Apply window function
-  arm_mult_q31(buf, blackmanHarris1024, buf, FFT_SIZE);
-
-  // Do FFT
-  // Reuse display buffer due to memory limitation
-  // Note that display buffer happened to have the same size required by fftTemp, what a coincidence...
-  int32_t* fftTemp = (int32_t*)dispBuf;
-  arm_rfft_q31(&rfftInstance, buf, fftTemp);
-
-  // Take magnitude and scale up
-  FastMag(fftTemp, buf, FFT_SIZE / 2);
-  for (uint32_t i = 0; i < FFT_SIZE / 2; ++i)
-    buf[i] <<= 5;
-
-  // Logarithmic remapping; here fftTemp is reused, again, due to memory limitation
-  int32_t* currHeight = fftTemp;
-  for (int32_t i = 0; i < SSD1362_SEGS; ++i)
-    currHeight[i] = buf[expMap[i]];
-
-  // Take log, shift, scale, clamp
-  arm_vlog_q31(currHeight, currHeight, SSD1362_SEGS);
-
-  for (uint32_t i = 0; i < SSD1362_SEGS; ++i)
-  {
-    int32_t tmp = currHeight[i];
-
-    tmp += RESULT_FLOOR;
-    tmp = Max(0, tmp);
-    tmp *= RESULT_SCALE;
-
-    currHeight[i] = tmp;
-  }
+  int32_t* currHeight = (int32_t*)dispBuf;
+  FFTResultToHeight(fftResult, currHeight);
 
   // Interpolation
-   CubicInterp(currHeight);
+   CubicSplineInterpolate(currHeight);
 //  SinInterp(currHeight);
 
   // Update bar height, dot height and TTL
@@ -224,7 +229,8 @@ void UpdateScreen(int32_t* buf)
   // Holding and smooth falling
   for (int32_t i = 0; i < SSD1362_SEGS; ++i)
   {
-    barHeight[i] = Max(barHeight[i] - BAR_FALL_SPEED, 0);
+  	float barFallSpeed = BAR_FALL_SPEED * (expf(barHeight[i] * 0.0000152587890625f) - 1.f);
+    barHeight[i] = Max(barHeight[i] - (int32_t)(barFallSpeed), 0);
 
     if (dotTTL[i] == 0)
     {
@@ -235,6 +241,4 @@ void UpdateScreen(int32_t* buf)
       --dotTTL[i];
     }
   }
-
-  LL_SPI_EnableDMAReq_TX(SPI1);
 }
