@@ -1,7 +1,7 @@
 # STM32 Audio Spectrum Visualizer
 ![](img.jpg)
 
-# Hardware
+## Hardware
 - STM32F103C8
 - SSD1362
 

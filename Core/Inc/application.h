@@ -9,10 +9,10 @@
 #define BAR_FALL_SPEED (1U << 13)
 #define DOT_FALL_SPEED (1U << 7)
 #define DOT_TTL 64
-#define FFT_SIZE 1024	// If you change this, everything will be broken...
-#define DC_BIAS 2052
-#define RESULT_FLOOR 275000000U
-#define RESULT_SCALE 10U
+#define FFT_SIZE 1024
+#define DC_BIAS 2051
+#define RESULT_BIAS 350000000U
+#define RESULT_SCALE 6U
 #define INTERP_COUNT 30U
 #define FILL_GRADIENT 0
 

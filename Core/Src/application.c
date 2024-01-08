@@ -162,7 +162,7 @@ void FFTResultToHeight(int32_t* fftResult, int32_t* currHeight)
 	{
 		int32_t tmp = currHeight[i];
 
-		tmp += RESULT_FLOOR;
+		tmp += RESULT_BIAS;
 		tmp = Max(0, tmp);
 		tmp *= RESULT_SCALE;
 
@@ -229,8 +229,8 @@ void UpdateDisplayBuffer(int32_t* fftResult)
   // Holding and smooth falling
   for (int32_t i = 0; i < SSD1362_SEGS; ++i)
   {
-  	float barFallSpeed = BAR_FALL_SPEED * (expf(barHeight[i] * 0.0000152587890625f) - 1.f);
-    barHeight[i] = Max(barHeight[i] - (int32_t)(barFallSpeed), 0);
+  	float barFallSpeed = BAR_FALL_SPEED * (expf(barHeight[i] * (1.f / UINT16_MAX)) - 1.f);
+    barHeight[i] = Max(barHeight[i] - (int32_t)barFallSpeed, 0);
 
     if (dotTTL[i] == 0)
     {
