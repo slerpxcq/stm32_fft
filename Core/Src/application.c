@@ -134,10 +134,12 @@ static void CubicSplineInterpolate(int32_t* height)
 void FFTResultToHeight(int32_t* fftResult, int32_t* currHeight)
 {
 	// Subtract DC bias and align to left
-	for (uint32_t i = 0; i < FFT_SIZE; ++i)
-		fftResult[i] = (fftResult[i] - DC_BIAS) << 19;
+	int32_t mean;
+	arm_mean_q31(fftResult, FFT_SIZE, &mean);
+	arm_offset_q31(fftResult, -mean, fftResult, FFT_SIZE);
+	arm_shift_q31(fftResult, 19, fftResult, FFT_SIZE);
 
-	// Apply window function
+	// Window function
 	arm_mult_q31(fftResult, blackmanHarris1024, fftResult, FFT_SIZE);
 
 	// Do FFT
@@ -148,8 +150,7 @@ void FFTResultToHeight(int32_t* fftResult, int32_t* currHeight)
 
 	// Take magnitude and scale up
 	FastMagnitude(fftTemp, fftResult, FFT_SIZE / 2);
-	for (uint32_t i = 0; i < FFT_SIZE / 2; ++i)
-		fftResult[i] <<= 5;
+	arm_shift_q31(fftResult, 5, fftResult, FFT_SIZE / 2);
 
 	// Logarithmic remapping; here fftTemp is reused, again, due to memory limitation
 	for (int32_t i = 0; i < SSD1362_SEGS; ++i)

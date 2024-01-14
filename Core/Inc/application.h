@@ -10,7 +10,7 @@
 #define DOT_FALL_SPEED (1U << 7)
 #define DOT_TTL 64
 #define FFT_SIZE 1024
-#define DC_BIAS 2051
+#define DC_BIAS 2130
 #define RESULT_BIAS 350000000U
 #define RESULT_SCALE 6U
 #define INTERP_COUNT 30U

@@ -72,12 +72,18 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define SSD1362_RES_Pin LL_GPIO_PIN_0
-#define SSD1362_RES_GPIO_Port GPIOB
-#define SSD1362_DC_Pin LL_GPIO_PIN_1
-#define SSD1362_DC_GPIO_Port GPIOB
+#define SSD1362_DC_Pin LL_GPIO_PIN_3
+#define SSD1362_DC_GPIO_Port GPIOA
+#define SSD1362_RES_Pin LL_GPIO_PIN_4
+#define SSD1362_RES_GPIO_Port GPIOA
+#define SSD1362_DCB1_Pin LL_GPIO_PIN_1
+#define SSD1362_DCB1_GPIO_Port GPIOB
 #define LED_Pin LL_GPIO_PIN_12
 #define LED_GPIO_Port GPIOB
+#define USR_BTN1_Pin LL_GPIO_PIN_5
+#define USR_BTN1_GPIO_Port GPIOB
+#define USR_BTN2_Pin LL_GPIO_PIN_6
+#define USR_BTN2_GPIO_Port GPIOB
 #ifndef NVIC_PRIORITYGROUP_0
 #define NVIC_PRIORITYGROUP_0         ((uint32_t)0x00000007) /*!< 0 bit  for pre-emption priority,
                                                                  4 bits for subpriority */
