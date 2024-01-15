@@ -1,5 +1,7 @@
 #include "application.h"
 
+
+
 __STATIC_INLINE int32_t Min(int32_t x, int32_t y)
 {
 	return x <= y ? x : y;
@@ -46,7 +48,7 @@ static void SinInterp(int32_t* height)
   int32_t x0 = 0, x1 = 0;
   for (int32_t i = 1; i < SSD1362_COLS; ++i)
   {
-    if (expMap[i] != expMap[i-1])
+    if (logScale[i] != logScale[i-1])
       x1 = i;
 
     int32_t y0 = height[x0], y1 = height[x1];
@@ -80,9 +82,13 @@ static void I32ToF32(int32_t* inout, uint32_t blockSize)
 {
   for (uint32_t i = 0; i < blockSize; ++i)
   {
-    float32_t tmp;
-    tmp = (float32_t)inout[i];
-    inout[i] = *(int32_t*)&tmp;
+  	union {
+  		int32_t i;
+			float f;
+  	} u;
+
+    u.f = (float32_t)inout[i];
+    inout[i] = u.i;
   }
 }
 
@@ -99,20 +105,12 @@ static void F32ToI32(int32_t* inout, uint32_t blockSize)
 static void CubicSplineInterpolate(int32_t* height)
 {
   int32_t knownX[INTERP_COUNT], knownY[INTERP_COUNT];
-  uint8_t j = 0;
 
   // Find all jump points
-  for (int32_t i = 1; i < SSD1362_SEGS; ++i)
+  for (int32_t i = 0; i < INTERP_COUNT; ++i)
   {
-    if (expMap[i] != expMap[i-1])
-    {
-      knownX[j] = i;
-      knownY[j] = height[i];
-      ++j;
-
-      if (j == INTERP_COUNT)
-        break;
-    }
+  	knownX[i] = jumpPoints[i];
+  	knownY[i] = height[jumpPoints[i]];
   }
 
   int32_t interpEnd = knownX[INTERP_COUNT - 1];
@@ -149,12 +147,15 @@ void FFTResultToHeight(int32_t* fftResult, int32_t* currHeight)
 	arm_rfft_q31(&rfftInstance, fftResult, fftTemp);
 
 	// Take magnitude and scale up
+	//FastMagnitude(fftTemp, fftResult, FFT_SIZE / 2);
 	FastMagnitude(fftTemp, fftResult, FFT_SIZE / 2);
-	arm_shift_q31(fftResult, 5, fftResult, FFT_SIZE / 2);
+	arm_shift_q31(fftResult, 6, fftResult, FFT_SIZE / 2);
 
 	// Logarithmic remapping; here fftTemp is reused, again, due to memory limitation
+#if LOG_SCALE
 	for (int32_t i = 0; i < SSD1362_SEGS; ++i)
-		currHeight[i] = fftResult[expMap[i]];
+		currHeight[i] = fftResult[logScale[i]];
+#endif
 
 	// Take log, shift, scale, clamp
 	arm_vlog_q31(currHeight, currHeight, SSD1362_SEGS);
@@ -181,7 +182,9 @@ void UpdateDisplayBuffer(int32_t* fftResult)
   FFTResultToHeight(fftResult, currHeight);
 
   // Interpolation
-   CubicSplineInterpolate(currHeight);
+#if LOG_SCALE
+  CubicSplineInterpolate(currHeight);
+#endif
 //  SinInterp(currHeight);
 
   // Update bar height, dot height and TTL
