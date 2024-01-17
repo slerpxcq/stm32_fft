@@ -173,7 +173,7 @@ int main(void)
 
   		LL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
-			UpdateDisplayBuffer(fftInOut[rdIdx]);
+			DoFFTAndUpdateDisplay(fftInOut[rdIdx]);
 			LL_SPI_EnableDMAReq_TX(SPI1);
   	}
     /* USER CODE END WHILE */

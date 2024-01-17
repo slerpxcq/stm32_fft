@@ -13,12 +13,16 @@
 #define DC_BIAS 2130
 #define RESULT_BIAS 350000000U
 #define RESULT_SCALE 6U
-//#define INTERP_COUNT 30U
 #define ARR_SIZE(x) (sizeof(x)/sizeof(x[0]))
 #define INTERP_COUNT ARR_SIZE(jumpPoints)
 #define FILL_GRADIENT 0
 #define LOG_SCALE 1
 
-void UpdateDisplayBuffer(int32_t* buf);
+#define INTERP_METHOD_TABULAR 0
+#define INTERP_METHOD_SPLINE 1
+#define INTERP_METHOD_LINEAR 2
+#define INTERP_METHOD INTERP_METHOD_LINEAR
+
+void DoFFTAndUpdateDisplay(int32_t* buf);
 
 #endif // _APPLICATION_H_
