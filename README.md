@@ -1,4 +1,4 @@
-# STM32 Audio Spectrum Visualizer
+# STM32 Audio Visualizer
 ![](img.jpg)
 
 ## Hardware
@@ -6,9 +6,12 @@
 - SSD1362
 
 ## Features
-- LL library
+- Full LL library (No HAL)
 - Logarithmic scale
-- Cubic spline interpolation
-- Max hold dot
-- Slow fall
 - Double buffering
+    - No sample loss
+- Interpolation methods:
+    - Cubic spline 
+    - Linear
+    - Tabular
+
