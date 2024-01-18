@@ -1,5 +1,6 @@
 #include "application.h"
 #include "math_utils.h"
+#include "spline_q31.h"
 
 arm_rfft_instance_q31 rfftInstance;
 uint8_t dispBuf[SSD1362_SEGS / 2][SSD1362_COMS];
@@ -33,6 +34,7 @@ static void FastMagnitude(int32_t* pSrc, int32_t* pDst, uint32_t blockSize)
    }
 }
 
+#if LOG_SCALE
 #if (INTERP_METHOD == INTERP_METHOD_LINEAR || INTERP_METHOD == INTERP_METHOD_TABULAR)
 static void NaiveInterpolate(int32_t* height)
 {
@@ -65,59 +67,28 @@ static void NaiveInterpolate(int32_t* height)
 		}
   }
 }
-
-#else // (INTERP_METHOD == INTERP_METHOD_LINEAR || INTERP_METHOD == INTERP_METHOD_TABULAR)
-static void IntToFloatInPlace(int32_t* inout, uint32_t blockSize)
-{
-  for (uint32_t i = 0; i < blockSize; ++i)
-  {
-  	union {
-  		int32_t i;
-			float f;
-  	} u;
-
-    u.f = (float32_t)inout[i];
-    inout[i] = u.i;
-  }
-}
-
-static void FloatToIntInPlace(int32_t* inout, uint32_t blockSize)
-{
-  for (uint32_t i = 0; i < blockSize; ++i)
-  {
-    int32_t tmp;
-    tmp = (int32_t)(*(float32_t*)&inout[i]);
-    inout[i] = tmp;
-  }
-}
-
+#else
 static void CubicSplineInterpolate(int32_t* height)
 {
-  int32_t knownX[INTERP_COUNT], knownY[INTERP_COUNT];
+	int32_t knownX[INTERP_COUNT];
+  int32_t knownY[INTERP_COUNT];
 
-  // Find all jump points
-  for (int32_t i = 0; i < INTERP_COUNT; ++i)
-  {
-  	knownX[i] = jumpPoints[i];
-  	knownY[i] = height[jumpPoints[i]];
-  }
+	for (int32_t i = 0; i < INTERP_COUNT; ++i)
+	{
+		knownX[i] = q_from_int(jumpPoints[i]);
+		knownY[i] = height[jumpPoints[i]];
+	}
 
-  int32_t interpEnd = knownX[INTERP_COUNT - 1];
-
-  IntToFloatInPlace(knownX, INTERP_COUNT);
-  IntToFloatInPlace(knownY, INTERP_COUNT);
-
-  static arm_spline_instance_f32 splineInstance;
-  static float32_t coeffs[3 * (INTERP_COUNT - 1)];
-  static float32_t tmpBuf[2 * INTERP_COUNT - 1];
-
-  arm_spline_init_f32(&splineInstance, ARM_SPLINE_NATURAL,
-      (float32_t*)knownX, (float32_t*)knownY, INTERP_COUNT, coeffs, tmpBuf);
-  IntToFloatInPlace(height, interpEnd);
-  arm_spline_f32(&splineInstance, linearX, (float32_t*)height, interpEnd);
-  FloatToIntInPlace(height, interpEnd);
+	arm_shift_q31(knownY, -INTERP_SHIFT, knownY, INTERP_COUNT);
+	arm_spline_instance_q31 splineInstance;
+	static int32_t coeffs[3 * (INTERP_COUNT - 1)];
+	static int32_t tmpBuf[2 * INTERP_COUNT - 1];
+	arm_spline_init_q31(&splineInstance, ARM_SPLINE_NATURAL, knownX, knownY, INTERP_COUNT, coeffs, tmpBuf);
+	arm_spline_q31(&splineInstance, XTableQ, height, INTERP_END);
+	arm_shift_q31(height, INTERP_SHIFT, height, INTERP_END);
 }
-#endif // (INTERP_METHOD == INTERP_METHOD_SPLINE)
+#endif // (INTERP_METHOD == INTERP_METHOD_LINEAR || INTERP_METHOD == INTERP_METHOD_TABULAR)
+#endif // LOG_SCALE
 
 static void PreprocessSamples(int32_t* fftResult)
 {
@@ -145,24 +116,21 @@ static void DoFFTAndGetMagnitude(int32_t* fftResult)
 static void MapToLogarithmicScale(int32_t* fftResult, int32_t* currHeight)
 {
 	// Logarithmic remapping; here fftTemp is reused, again, due to memory limitation
-#if LOG_SCALE
+
 	for (int32_t i = 0; i < SSD1362_SEGS; ++i)
+	{
+#if LOG_SCALE
 		currHeight[i] = fftResult[logScale[i]];
-#endif
+#else
+		currHeight[i] = fftResult[i];
+#endif // LOG_SCALE
+	}
 
 	// Take log, shift, scale, clamp
 	arm_vlog_q31(currHeight, currHeight, SSD1362_SEGS);
-
-	for (uint32_t i = 0; i < SSD1362_SEGS; ++i)
-	{
-		int32_t tmp = currHeight[i];
-
-		tmp += RESULT_BIAS;
-		tmp = Max(0, tmp);
-		tmp *= RESULT_SCALE;
-
-		currHeight[i] = tmp;
-	}
+	arm_offset_q31(currHeight, LOG_RESULT_OFFSET, currHeight, SSD1362_SEGS);
+	arm_clip_q31(currHeight, currHeight, 0, INT32_MAX, SSD1362_SEGS);
+	arm_scale_q31(currHeight, LOG_RESULT_SCALE << 28, 3, currHeight, SSD1362_SEGS);
 }
 
 static void UpdateBarAndDotHeight(int32_t* currHeight, int16_t* barHeight, int16_t* dotHeight, uint8_t* dotTTL)
@@ -245,7 +213,6 @@ void DoFFTAndUpdateDisplay(int32_t* fftResult)
 #if LOG_SCALE
 #if (INTERP_METHOD == INTERP_METHOD_SPLINE)
   CubicSplineInterpolate(currHeight);
-  //
 #else
   NaiveInterpolate(currHeight);
 #endif // (INTERP_METHOD == INTERP_METHOD_SPLINE)
