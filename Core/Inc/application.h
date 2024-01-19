@@ -6,7 +6,7 @@
 #include "arm_math.h"
 #include "tables.h"
 
-#define BAR_FALL_SPEED (1U << 13)
+#define BAR_FALL_SPEED 1
 #define DOT_FALL_SPEED (1U << 7)
 #define DOT_TTL 64
 #define FFT_SIZE 1024

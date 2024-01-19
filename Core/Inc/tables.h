@@ -6,7 +6,6 @@
 extern const int32_t logScale[];
 extern const int32_t blackmanHarris1024[];
 extern const int32_t interpTable[];
-extern const float linearX[];
 extern const int32_t jumpPoints[39];
 
 #endif // _TABLES_H_

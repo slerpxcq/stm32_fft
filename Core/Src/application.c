@@ -20,15 +20,15 @@ static void StaticFree(void* mem)
 	isMemoryUsing = 0;
 }
 
-static void FastMagnitude(int32_t* pSrc, int32_t* pDst, uint32_t blockSize)
+static void i32_fast_mag(int32_t* pSrc, int32_t* pDst, uint32_t blockSize)
 {
    for (uint32_t i = 0; i < blockSize; ++i)
    {
-     int32_t absRe = Abs(pSrc[2*i]);
-     int32_t absIm = Abs(pSrc[2*i+1]);
+     int32_t absRe = i32_abs(pSrc[2*i]);
+     int32_t absIm = i32_abs(pSrc[2*i+1]);
 
-     int32_t max = Max(absRe, absIm);
-     int32_t min = Min(absRe, absIm);
+     int32_t max = i32_max(absRe, absIm);
+     int32_t min = i32_min(absRe, absIm);
 
      pDst[i] = max + ((3*min) >> 3);
    }
@@ -108,7 +108,7 @@ static void DoFFTAndGetMagnitude(int32_t* fftResult)
 	arm_rfft_q31(&rfftInstance, fftResult, fftTemp);
 
 	// Take magnitude and scale up
-	FastMagnitude(fftTemp, fftResult, FFT_SIZE / 2);
+	i32_fast_mag(fftTemp, fftResult, FFT_SIZE / 2);
 	arm_shift_q31(fftResult, 6, fftResult, FFT_SIZE / 2);
 	StaticFree(fftTemp);
 }
@@ -136,15 +136,17 @@ static void MapToLogarithmicScale(int32_t* fftResult, int32_t* currHeight)
 static void UpdateBarAndDotHeight(int32_t* currHeight, int16_t* barHeight, int16_t* dotHeight, uint8_t* dotTTL)
 {
 	for (int32_t i = 0; i < SSD1362_SEGS; ++i)
-	  {
-	  	currHeight[i] >>= 16;
-	    barHeight[i] = Max(barHeight[i], (int16_t)currHeight[i]);
-	    if (dotHeight[i] < barHeight[i])
-	    {
-	      dotHeight[i] = barHeight[i];
-	      dotTTL[i] = DOT_TTL;
-	    }
-	  }
+	{
+		currHeight[i] >>= 16;
+		barHeight[i] = i32_max(barHeight[i], (int16_t)currHeight[i]);
+
+		// If the bar is higher than the dot, the dot is refreshed
+		if (dotHeight[i] < barHeight[i])
+		{
+			dotHeight[i] = barHeight[i];
+			dotTTL[i] = DOT_TTL;
+		}
+	}
 }
 
 static void UpdateDisplayFromHeights(int16_t* barHeight, int16_t* dotHeight)
@@ -184,12 +186,12 @@ static void UpdateFalling(int16_t* barHeight, int16_t* dotHeight, uint8_t* dotTT
 {
 	for (int32_t i = 0; i < SSD1362_SEGS; ++i)
 	{
-		float barFallSpeed = BAR_FALL_SPEED * (expf(barHeight[i] * (1.f / UINT16_MAX)) - 1.f);
-		barHeight[i] = Max(barHeight[i] - (int32_t)barFallSpeed, 0);
+		int16_t barFallSpeed = BAR_FALL_SPEED * ((q29_exp(barHeight[i]) - ONE_Q29) >> 3);
+		barHeight[i] = i32_max(barHeight[i] - barFallSpeed, 0);
 
 		if (dotTTL[i] == 0)
 		{
-			dotHeight[i] = Max(dotHeight[i] - DOT_FALL_SPEED, (1U << 8));
+			dotHeight[i] = i32_max(dotHeight[i] - DOT_FALL_SPEED, (1U << 8));
 		}
 		else
 		{

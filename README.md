@@ -7,6 +7,7 @@
 
 ## Features
 - Full LL library (No HAL)
+- Full fixed point arithmetic
 - Logarithmic scale
 - Double buffering
     - No sample loss
