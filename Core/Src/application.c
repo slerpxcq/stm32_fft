@@ -115,8 +115,6 @@ static void DoFFTAndGetMagnitude(int32_t* fftResult)
 
 static void MapToLogarithmicScale(int32_t* fftResult, int32_t* currHeight)
 {
-	// Logarithmic remapping; here fftTemp is reused, again, due to memory limitation
-
 	for (int32_t i = 0; i < SSD1362_SEGS; ++i)
 	{
 #if LOG_SCALE
