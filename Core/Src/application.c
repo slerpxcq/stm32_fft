@@ -24,11 +24,11 @@ static void i32_fast_mag(int32_t* pSrc, int32_t* pDst, uint32_t blockSize)
 {
    for (uint32_t i = 0; i < blockSize; ++i)
    {
-     int32_t absRe = i32_abs(pSrc[2*i]);
-     int32_t absIm = i32_abs(pSrc[2*i+1]);
+     int32_t absRe = abs_q31(pSrc[i<<1]);
+     int32_t absIm = abs_q31(pSrc[(i<<1)+1]);
 
-     int32_t max = i32_max(absRe, absIm);
-     int32_t min = i32_min(absRe, absIm);
+     int32_t max = max_q31(absRe, absIm);
+     int32_t min = min_q31(absRe, absIm);
 
      pDst[i] = max + ((3*min) >> 3);
    }
@@ -136,7 +136,7 @@ static void UpdateBarAndDotHeight(int32_t* currHeight, int16_t* barHeight, int16
 	for (int32_t i = 0; i < SSD1362_SEGS; ++i)
 	{
 		currHeight[i] >>= 16;
-		barHeight[i] = i32_max(barHeight[i], (int16_t)currHeight[i]);
+		barHeight[i] = max_q31(barHeight[i], (int16_t)currHeight[i]);
 
 		// If the bar is higher than the dot, the dot is refreshed
 		if (dotHeight[i] < barHeight[i])
@@ -152,30 +152,21 @@ static void UpdateDisplayFromHeights(int16_t* barHeight, int16_t* dotHeight)
 	for (uint32_t i = 0; i < SSD1362_SEGS / 2; ++i)
 	{
 		// Remap bar and dot height from [0, 2^15) to [0, 64), shift right by 9 bits
-		int16_t barH0 = barHeight[2*i] >> 9;
-		int16_t dotH0 = dotHeight[2*i] >> 9;
-		int16_t barH1 = barHeight[2*i+1] >> 9;
-		int16_t dotH1 = dotHeight[2*i+1] >> 9;
+		int16_t barH0 = barHeight[(i<<1)] >> 9;
+		int16_t dotH0 = dotHeight[(i<<1)] >> 9;
+		int16_t barH1 = barHeight[(i<<1)+1] >> 9;
+		int16_t dotH1 = dotHeight[(i<<1)+1] >> 9;
 
-		for (uint32_t j = 0; j < SSD1362_COMS; ++j)
+		for (uint32_t j = 0; j < SSD1362_COMS; ++j, --barH0, --barH1, --dotH0, --dotH1)
 		{
-			dispBuf[i][j] = 0;
-			// Uniform fill
-#if !FILL_GRADIENT
-			dispBuf[i][j] |= (barH0 > 0) ? 0xf0 : 0;
-			dispBuf[i][j]	|= (barH1 > 0) ? 0x0f : 0;
+			uint8_t tmp = 0;
 
-#else
-			// Gradient fill
-			dispBuf[i][j] |= (barH0 < 16 && barH0 > 0) ? ((16 - barH0) << 4) : 0;
-			dispBuf[i][j] |= (barH1 < 16 && barH1 > 0) ? (16 - barH0) : 0;
-#endif
-			dispBuf[i][j] |= (dotH0 == 0) ? 0xf0 : 0;
-			dispBuf[i][j] |= (dotH1 == 0) ? 0x0f : 0;
-			--barH0;
-			--dotH0;
-			--barH1;
-			--dotH1;
+			tmp |= (barH0 > FADE_SIZE) ? (BAR_COLOR << 4) : (barH0 <= FADE_SIZE && barH0 >= 0) ? ((BAR_COLOR-(FADE_SIZE-barH0)) << 4) : 0;
+			tmp	|= (barH1 > FADE_SIZE) ? (BAR_COLOR) : (barH1 <= FADE_SIZE && barH1 >= 0) ? ((BAR_COLOR-(FADE_SIZE-barH1))) : 0;
+			tmp |= (dotH0 == 0) ? (DOT_COLOR << 4) : 0;
+			tmp |= (dotH1 == 0) ? DOT_COLOR : 0;
+
+			dispBuf[i][j] = tmp;
 		}
 	}
 }
@@ -184,12 +175,12 @@ static void UpdateFalling(int16_t* barHeight, int16_t* dotHeight, uint8_t* dotTT
 {
 	for (int32_t i = 0; i < SSD1362_SEGS; ++i)
 	{
-		int16_t barFallSpeed = BAR_FALL_SPEED * ((q29_exp(barHeight[i]) - ONE_Q29) >> 3);
-		barHeight[i] = i32_max(barHeight[i] - barFallSpeed, 0);
+		int16_t barFallSpeed = BAR_FALL_SPEED * ((exp_q29(barHeight[i]) - ONE_Q29) >> 3);
+		barHeight[i] = max_q31(barHeight[i] - barFallSpeed, 0);
 
 		if (dotTTL[i] == 0)
 		{
-			dotHeight[i] = i32_max(dotHeight[i] - DOT_FALL_SPEED, (1U << 8));
+			dotHeight[i] = max_q31(dotHeight[i] - DOT_FALL_SPEED, (1U << 8));
 		}
 		else
 		{
