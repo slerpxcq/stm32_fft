@@ -44,9 +44,8 @@
 /* USER CODE BEGIN PV */
 volatile uint8_t sampleAvail;
 volatile uint8_t processCplt;
+volatile uint8_t readBuffer;
 
-static uint8_t wrIdx;
-static uint8_t rdIdx;
 static int32_t fftInOut[2][FFT_SIZE];
 
 extern arm_rfft_instance_q31 rfftInstance;
@@ -120,9 +119,10 @@ int main(void)
 
   // ADC DMA configuration
   LL_DMA_SetPeriphAddress(DMA1, LL_DMA_CHANNEL_1, (uint32_t)&ADC1->DR);
-  LL_DMA_SetMemoryAddress(DMA1, LL_DMA_CHANNEL_1, (uint32_t)fftInOut[0]);
-  LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_1, FFT_SIZE);
+  LL_DMA_SetMemoryAddress(DMA1, LL_DMA_CHANNEL_1, (uint32_t)fftInOut);
+  LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_1, 2*FFT_SIZE);
   LL_DMA_EnableIT_TC(DMA1, LL_DMA_CHANNEL_1);
+  LL_DMA_EnableIT_HT(DMA1, LL_DMA_CHANNEL_1);
   LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_1);
 
   // SPI DMA configuration
@@ -145,8 +145,6 @@ int main(void)
 
   sampleAvail = 0;
   processCplt = 1;
-  wrIdx = 0;
-  rdIdx = 1;
   LL_ADC_REG_StartConversionExtTrig(ADC1, LL_ADC_REG_TRIG_EXT_RISING);
   /* USER CODE END 2 */
 
@@ -156,24 +154,12 @@ int main(void)
   {
   	if (sampleAvail && processCplt)
   	{
-  		// Reset flags
   		sampleAvail = 0;
   		processCplt = 0;
 
-  		// Swap buffers
-  		wrIdx = !wrIdx;
-  		rdIdx = !rdIdx;
-
-  		// RM0008 13.4.6
-  		// This register must not be written when the channel is enabled.
-  		LL_DMA_DisableChannel(DMA1, LL_DMA_CHANNEL_1);
-  		LL_DMA_SetMemoryAddress(DMA1, LL_DMA_CHANNEL_1, (uint32_t)fftInOut[wrIdx]);
-  		LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_1);
-  		LL_ADC_REG_StartConversionExtTrig(ADC1, LL_ADC_REG_TRIG_EXT_RISING);
-
   		LL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
-			DoFFTAndUpdateDisplay(fftInOut[rdIdx]);
+			DoFFTAndUpdateDisplay(fftInOut[readBuffer]);
 			LL_SPI_EnableDMAReq_TX(SPI1);
   	}
     /* USER CODE END WHILE */

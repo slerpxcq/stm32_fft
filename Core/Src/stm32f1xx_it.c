@@ -59,6 +59,7 @@
 /* USER CODE BEGIN EV */
 extern volatile uint8_t sampleAvail;
 extern volatile uint8_t processCplt;
+extern volatile uint8_t readBuffer;
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -200,8 +201,17 @@ void SysTick_Handler(void)
 void DMA1_Channel1_IRQHandler(void)
 {
   /* USER CODE BEGIN DMA1_Channel1_IRQn 0 */
-	LL_DMA_ClearFlag_TC1(DMA1);
-	LL_ADC_REG_StopConversionExtTrig(ADC1);
+	if (LL_DMA_IsActiveFlag_TC1(DMA1))
+	{
+		LL_DMA_ClearFlag_TC1(DMA1);
+		readBuffer = 1;
+	}
+	if (LL_DMA_IsActiveFlag_HT1(DMA1))
+	{
+		LL_DMA_ClearFlag_HT1(DMA1);
+		readBuffer = 0;
+	}
+	//LL_ADC_REG_StopConversionExtTrig(ADC1);
 	sampleAvail = 1;
   /* USER CODE END DMA1_Channel1_IRQn 0 */
 
@@ -220,7 +230,6 @@ void DMA1_Channel3_IRQHandler(void)
 	LL_SPI_DisableDMAReq_TX(SPI1);
 	processCplt = 1;
 	LL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-
   /* USER CODE END DMA1_Channel3_IRQn 0 */
 
   /* USER CODE BEGIN DMA1_Channel3_IRQn 1 */

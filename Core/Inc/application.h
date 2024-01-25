@@ -12,7 +12,7 @@
 #define BAR_COLOR 12
 #define DOT_COLOR 15
 #define FADE_SIZE 4
-#define DOT_TTL 32
+#define DOT_TTL 16
 #define LOG_SCALE 1
 
 #define INTERP_METHOD_TABULAR 0
@@ -29,6 +29,7 @@
 #define INTERP_COUNT ARR_SIZE(jumpPoints)
 #define INTERP_END jumpPoints[INTERP_COUNT-1]
 #define INTERP_SHIFT 1
+#define DOT_FLOOR (1<<8)
 
 void DoFFTAndUpdateDisplay(int32_t* buf);
 

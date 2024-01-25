@@ -161,8 +161,8 @@ static void UpdateDisplayFromHeights(int16_t* barHeight, int16_t* dotHeight)
 		{
 			uint8_t tmp = 0;
 
-			tmp |= (barH0 > FADE_SIZE) ? (BAR_COLOR << 4) : (barH0 <= FADE_SIZE && barH0 >= 0) ? ((BAR_COLOR-(FADE_SIZE-barH0)) << 4) : 0;
-			tmp	|= (barH1 > FADE_SIZE) ? (BAR_COLOR) : (barH1 <= FADE_SIZE && barH1 >= 0) ? ((BAR_COLOR-(FADE_SIZE-barH1))) : 0;
+			tmp |= (barH0 > FADE_SIZE) ? (BAR_COLOR << 4) : (barH0 >= 0 && barH0 <= FADE_SIZE) ? ((BAR_COLOR-(FADE_SIZE-barH0)-1) << 4) : 0;
+			tmp	|= (barH1 > FADE_SIZE) ? (BAR_COLOR) : (barH1 >= 0 && barH1 <= FADE_SIZE) ? ((BAR_COLOR-(FADE_SIZE-barH1)-1)) : 0;
 			tmp |= (dotH0 == 0) ? (DOT_COLOR << 4) : 0;
 			tmp |= (dotH1 == 0) ? DOT_COLOR : 0;
 
@@ -180,7 +180,7 @@ static void UpdateFalling(int16_t* barHeight, int16_t* dotHeight, uint8_t* dotTT
 
 		if (dotTTL[i] == 0)
 		{
-			dotHeight[i] = max_q31(dotHeight[i] - DOT_FALL_SPEED, (1U << 8));
+			dotHeight[i] = max_q31(dotHeight[i] - DOT_FALL_SPEED, DOT_FLOOR);
 		}
 		else
 		{
