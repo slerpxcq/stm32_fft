@@ -116,8 +116,10 @@ int main(void)
 
   LL_SPI_Enable(SPI1);
   SSD1362_Init();
+  arm_rfft_init_q31(&rfftInstance, FFT_SIZE, 0, 1);
 
   // ADC DMA configuration
+  // RM0008 13.3.3 Channel configuration procedure
   LL_DMA_SetPeriphAddress(DMA1, LL_DMA_CHANNEL_1, (uint32_t)&ADC1->DR);
   LL_DMA_SetMemoryAddress(DMA1, LL_DMA_CHANNEL_1, (uint32_t)fftInOut);
   LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_1, 2*FFT_SIZE);
@@ -135,13 +137,10 @@ int main(void)
   LL_ADC_Enable(ADC1);
   LL_ADC_StartCalibration(ADC1);
   while (LL_ADC_IsCalibrationOnGoing(ADC1));
-  //LL_ADC_EnableIT_EOS(ADC1);
 
   // Sampling clock configuration
-  LL_TIM_EnableCounter(TIM3);
   LL_TIM_EnableUpdateEvent(TIM3);
-
-  arm_rfft_init_q31(&rfftInstance, FFT_SIZE, 0, 1);
+  LL_TIM_EnableCounter(TIM3);
 
   sampleAvail = 0;
   processCplt = 1;
@@ -425,9 +424,6 @@ static void MX_GPIO_Init(void)
   LL_GPIO_ResetOutputPin(GPIOA, SSD1362_DC_Pin|SSD1362_RES_Pin);
 
   /**/
-  LL_GPIO_ResetOutputPin(SSD1362_DCB1_GPIO_Port, SSD1362_DCB1_Pin);
-
-  /**/
   LL_GPIO_SetOutputPin(LED_GPIO_Port, LED_Pin);
 
   /**/
@@ -438,11 +434,11 @@ static void MX_GPIO_Init(void)
   LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /**/
-  GPIO_InitStruct.Pin = SSD1362_DCB1_Pin|LED_Pin;
+  GPIO_InitStruct.Pin = LED_Pin;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
   GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
-  LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  LL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
 
   /**/
   LL_GPIO_AF_SetEXTISource(LL_GPIO_AF_EXTI_PORTB, LL_GPIO_AF_EXTI_LINE5);
