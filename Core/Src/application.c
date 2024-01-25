@@ -20,7 +20,7 @@ static void StaticFree(void* mem)
 	isMemoryUsing = 0;
 }
 
-static void i32_fast_mag(int32_t* pSrc, int32_t* pDst, uint32_t blockSize)
+static void fast_mag_q31(int32_t* pSrc, int32_t* pDst, uint32_t blockSize)
 {
    for (uint32_t i = 0; i < blockSize; ++i)
    {
@@ -108,7 +108,7 @@ static void DoFFTAndGetMagnitude(int32_t* fftResult)
 	arm_rfft_q31(&rfftInstance, fftResult, fftTemp);
 
 	// Take magnitude and scale up
-	i32_fast_mag(fftTemp, fftResult, FFT_SIZE / 2);
+	fast_mag_q31(fftTemp, fftResult, FFT_SIZE / 2);
 	arm_shift_q31(fftResult, 6, fftResult, FFT_SIZE / 2);
 	StaticFree(fftTemp);
 }
@@ -138,7 +138,6 @@ static void UpdateBarAndDotHeight(int32_t* currHeight, int16_t* barHeight, int16
 		currHeight[i] >>= 16;
 		barHeight[i] = max_q31(barHeight[i], (int16_t)currHeight[i]);
 
-		// If the bar is higher than the dot, the dot is refreshed
 		if (dotHeight[i] < barHeight[i])
 		{
 			dotHeight[i] = barHeight[i];
