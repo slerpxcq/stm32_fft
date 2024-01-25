@@ -36,3 +36,10 @@ Field | Description
 ```LOG_SCALE```      | 0: Linear scale; 1: Log scale
 ```INTERP_METHOD```  | Interpolation method
 Sampling frequency   | fs = 72MHz / (TIM3 counter period + 1)
+
+## Hardware design considerations
+- Spatially seperate analog and digital area
+- Seperate regulator for digital and analog is REQUIRED
+    - OLED module produces massive ripple on the digital rail
+- Signal should be buffered using a RR(I)O Op-amp e.g. LMV32x and bias to VCC/2
+    - Refer to **Typical Applications For Single Supply Operation** in [LM1875 datasheet](https://www.ti.com/lit/ds/symlink/lm1875.pdf)
